@@ -33,9 +33,7 @@ On the Humanity of Conversational AI: Evaluating the Psychological Portrayal of 
 https://github.com/CUHK-ARISE/PsychoBench (works as is)
 Questionare based with likert scale 
 
-- Evaluating and Inducing Personality in Pre-trained Language Models
-https://doi.org/10.48550/arXiv.2206.07550
-Machine Personality Inventory (MPI) - Questionaire from Big Five etc.
+
 
 
 - Personality Alignment of Large Language Models
@@ -45,5 +43,30 @@ uses Big Five and SDD-3
 https://github.com/zhu-minjun/PAlign
 ICLR 2025 Poster 
 
--
--
+Evaluating and Inducing Personality in Pre-trained Language Models:
+- https://doi.org/10.48550/arXiv.2206.07550
+- "We observe a correlation between the internal consistency σ (indicating the existence of personality) and a model’s general capability." p. 6
+-  P^2 approach of the authours can induce a "persona" based on prompt
+-  P2 = psychologically grounded, chainprompting method that leverages both human trait descriptors and the model’s internal knowledge.
+- It produces controlled, consistent personality shifts measurable by MPI.
+- σ reduction is critical evidence that these aren’t random answers  the model’s “behavior” becomes more coherent within each trait domain.
+- These induced personalities were later confirmed qualitatively through vignette tests with human raters (Section 4.3).
+- Evaluating and Inducing Personality in Pre-trained Language Models
+- Machine Personality Inventory (MPI) - Questionaire from Big Five etc.
+
+Exploring the Potential of Large Language Models to Simulate Personality
+- https://doi.org/10.48550/arXiv.2502.08265
+- human annotaions of text for big 5
+- **prompt based classifier** (2 step,1. is a marker present, 2. what is the marker)
+- Neuroticism is even for human annotaters weak (.50)
+- linguistic analyse of lexica
+- used comercial models via API
+- code availbale at https://github.com/mary-silence/simulating_personality
+
+
+## Notes?
+- - Ist das negativ eines Traits das gegenteil ?
+- Multiple persona features können sich gegenseitig aufheben, vlt identifizieren mit Personality Alignment of Large Language Models ?
+
+
+
