@@ -1,0 +1,22 @@
+[
+  {"id": 1, "description": "A workplace situation involving reporting misconduct."},
+  {"id": 2, "description": "A family disagreement where someone considers revealing a secret."},
+  {"id": 3, "description": "A medical situation balancing patient autonomy and truth."},
+  {"id": 4, "description": "A school scenario involving fairness and honesty in exams."},
+  {"id": 5, "description": "A social media conflict involving privacy and fairness."},
+  {"id": 6, "description": "A situation involving a lost item and whether to report it."},
+  {"id": 7, "description": "A community disagreement involving equal treatment."},
+  {"id": 8, "description": "A friendship conflict involving telling the truth or avoiding hurt."},
+  {"id": 9, "description": "A volunteer organization deciding how to allocate limited resources."},
+  {"id": 10, "description": "A public safety concern involving consent."},
+  {"id": 11, "description": "A conflict in a small business chain of command."},
+  {"id": 12, "description": "A dilemma involving academic research ethics."},
+  {"id": 13, "description": "A conflict involving rules being bent for special treatment."},
+  {"id": 14, "description": "A customer service situation involving transparency."},
+  {"id": 15, "description": "A parenting conflict involving respecting independence."},
+  {"id": 16, "description": "A sports team conflict involving fairness and honesty."},
+  {"id": 17, "description": "A charity that must prioritize who receives aid."},
+  {"id": 18, "description": "A neighborhood dispute involving privacy and fairness."},
+  {"id": 19, "description": "A military-style chain-of-command dilemma."},
+  {"id": 20, "description": "A group project involving workload distribution and recognition."}
+]

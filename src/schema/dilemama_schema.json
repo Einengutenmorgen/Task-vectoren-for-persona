@@ -1,0 +1,14 @@
+{
+  "id": "unique-string-or-int",
+  "task_base": "AB",                       # unordered pair ("AB", "BC", "CA") only
+  "story": "The narrative text...",
+  "question": "The decision question...",
+  "options": {
+    "A": "Option text aligned with value A",
+    "B": "Option text aligned with value B"
+  },
+  "value_mapping": {
+    "A": "Honesty",                        # one of Autonomy/Honesty/Justice
+    "B": "Autonomy"
+  }
+}

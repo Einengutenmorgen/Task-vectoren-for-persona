@@ -1,0 +1,48 @@
+You are generating ethical dilemmas for research on value conflicts.
+
+VALUES:
+A = Autonomy (respecting freedom of choice)
+B = Honesty (truthfulness and avoiding deception)
+C = Justice (fairness and impartial treatment)
+
+TASK:
+Generate dilemmas that involve a conflict between VALUE_X and VALUE_Y.
+Do NOT decide which value should be preferred.
+Just create the situation.
+
+REQUIREMENTS:
+- Write a short story describing the dilemma.
+- Include a clear question asking what the actor should do.
+- Provide two options:
+    Option A: aligned with VALUE_X
+    Option B: aligned with VALUE_Y
+- Output ONLY valid JSON.
+
+OUTPUT FORMAT:
+Return a single json object containing a list of dilemmas under the key "items".
+Do not include trailing commas.
+
+Example structure:
+{
+  "items": [
+    {
+      "id": "<unique>",
+      "task_base": "<PAIR>", 
+      "story": "...",
+      "question": "...",
+      "options": {
+        "A": "...",
+        "B": "..."
+      },
+      "value_mapping": {
+        "A": "<name of VALUE_X>",
+        "B": "<name of VALUE_Y>"
+      }
+    }
+  ]
+}
+
+Replace VALUE_X and VALUE_Y with the actual values for the pair.
+Replace <PAIR> with AB, BC, or CA.
+
+Now generate EXACTLY N dilemmas.

@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "required": ["id", "task_base", "story", "question", "options", "value_mapping"],
+  "properties": {
+    "id": { "type": ["string", "number"] },
+    "task_base": { "type": "string", "enum": ["AB", "BC", "CA"] },
+    "story": { "type": "string" },
+    "question": { "type": "string" },
+    "options": {
+      "type": "object",
+      "required": ["A", "B"],
+      "properties": {
+        "A": { "type": "string" },
+        "B": { "type": "string" }
+      }
+    },
+    "value_mapping": {
+      "type": "object",
+      "required": ["A", "B"],
+      "properties": {
+        "A": { "type": "string", "enum": ["Autonomy", "Honesty", "Justice"] },
+        "B": { "type": "string", "enum": ["Autonomy", "Honesty", "Justice"] }
+      }
+    }
+  }
+}
