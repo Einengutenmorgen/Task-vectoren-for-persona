@@ -3,3 +3,10 @@ venv/
 __pycache__
 *.pyc
 .env
+batch_tasks_input.jsonl
+data/processed/en/base_pairs/
+data/processed/en/results/
+data/processed/en/test/
+data/raw/
+data/results/
+models

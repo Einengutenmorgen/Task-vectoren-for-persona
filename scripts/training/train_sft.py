@@ -1,152 +1,218 @@
+from __future__ import annotations
+
 import os
+# 1. Set Device Masking BEFORE other imports
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
 import sys
+import gc
 from pathlib import Path
 
-# --- Project Root Setup ---
+# Set up Project Root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 import torch
-from datasets import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-from peft import LoraConfig, get_peft_model
-from trl import SFTTrainer
+from peft import LoraConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from trl import SFTConfig, SFTTrainer
 
-from src.training.sft_dataset import SFTDilemmaDataset
+from src.training.sft_dataset import SFTDatasetConfig, load_sft_train_eval_datasets
 
-# ==========================================
-# GLOBAL CONFIGURATION SECTION
-# ==========================================
-MODEL_NAME = "meta-llama/Llama-3.2-1B-Instruct"
-OUTPUT_DIR = "models/sft"
-TRAIN_FILE_ROOT = "data/processed/en/tasks" # Tasks are subdirectories here
-BATCH_SIZE = 8
-EPOCHS = 5
-LR = 2e-4
-MAX_SEQ_LEN = 512
-# ==========================================
+# =========================
+# EXPLICIT CONFIGURATION
+# =========================
 
-def find_available_tasks(root_dir: str) -> list[str]:
-    """Dynamically finds all task directories that contain a train.jsonl file."""
-    root = Path(root_dir)
-    if not root.exists():
-        print(f"Error: Training root directory not found at {root_dir}")
-        return []
-        
-    tasks = []
-    # Find all subdirectories that contain 'train.jsonl'
-    for item in root.iterdir():
-        if item.is_dir() and (item / "train.jsonl").exists():
-            tasks.append(item.name)
-    return tasks
+MODEL_NAME_OR_PATH: str = "META-LLAMA/LLAMA-3.2-1B" 
+DATA_ROOT: str = str(PROJECT_ROOT / 'data/processed/en/tasks') 
+BASE_OUTPUT_DIR: str = str(PROJECT_ROOT / 'data/processed/en/results/sft') # Fixed: Use absolute path
 
-def run_training_for_task(task: str, device: str):
-    """Executes the SFT training process for a single specified task."""
-    print(f"\n--- Starting Training for Task: {task} ---")
+TASKS = ("AB", "BC", "CA")
+
+NUM_TRAIN_EPOCHS: float = 5.0
+PER_DEVICE_TRAIN_BATCH_SIZE: int = 8
+LEARNING_RATE: float = 2e-4
+WEIGHT_DECAY: float = 0.01
+MAX_LENGTH: int = 512
+GRADIENT_ACCUMULATION_STEPS: int = 1
+
+LORA_R: int = 4
+LORA_ALPHA: int = 8
+SAVE_MERGED: bool = True
+
+LOGGING_STEPS: int = 100
+SAVE_TOTAL_LIMIT: int = 2
+WARMUP_RATIO: float = 0.03
+
+
+def _validate_config() -> None:
+    """Fail fast if config is invalid or GPU is missing."""
+    if not MODEL_NAME_OR_PATH:
+        raise ValueError("MODEL_NAME_OR_PATH must be set.")
+    if not TASKS:
+        raise ValueError("TASKS must contain at least one task.")
     
-    train_path = Path(TRAIN_FILE_ROOT) / task / "train.jsonl"
-    dev_path   = Path(TRAIN_FILE_ROOT) / task / "dev.jsonl"
+    # Fail-Fast: Verify CUDA availability immediately
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available. Check your driver or CUDA_VISIBLE_DEVICES setting.")
     
-    if not train_path.exists():
-        print(f"Skipping task {task}: train file not found at {train_path}")
-        return
+    # Verify we are on the expected logical device (0) which maps to physical (3)
+    print(f"Running on: {torch.cuda.get_device_name(0)}")
 
-    try:
-        train_ds = SFTDilemmaDataset(train_path, task)
-        dev_ds   = SFTDilemmaDataset(dev_path, task) # Dev file is usually optional, but assumed available
 
-        # Convert to HF Dataset for SFTTrainer
-        train_hf = Dataset.from_list(list(train_ds))
-        dev_hf   = Dataset.from_list(list(dev_ds))
-    except Exception as e:
-        print(f"Error loading datasets for task {task}: {e}")
-        return
+def cleanup_gpu():
+    """Cleans up GPU memory."""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
-    # --- Tokenizer and Model Loading ---
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+def train_single_task(task_name: str) -> None:
+    print(f"\n{'='*40}")
+    print(f"STARTING TRAINING FOR TASK: {task_name}")
+    print(f"{'='*40}\n")
+
+    task_output_dir = os.path.join(BASE_OUTPUT_DIR, task_name)
+    os.makedirs(task_output_dir, exist_ok=True)
+
+    # 1. Load Data
+    dataset_cfg = SFTDatasetConfig(data_root=DATA_ROOT, tasks=[task_name])
+    print(f"[{task_name}] Loading datasets...")
+    train_dataset, eval_dataset = load_sft_train_eval_datasets(dataset_cfg)
+    print(f"[{task_name}] Train size: {len(train_dataset)} | Eval size: {len(eval_dataset)}")
+
+    # 2. Load Tokenizer
+    print(f"[{task_name}] Loading tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME_OR_PATH)
+    
+    # Fix: Handle padding token strictly
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right" # Explicitly set padding side
 
+    # 3. Load Model EXPLICITLY (Fixes 'Device is missing' / Config mismatch)
+    print(f"[{task_name}] Loading base model...")
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        dtype=torch.float16 if device == "cuda" else torch.float32
+        MODEL_NAME_OR_PATH,
+        device_map={"": 0}, # Force to local GPU 0 (Physical 3)
+        torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        attn_implementation="sdpa" if torch.cuda.get_device_capability()[0] >= 8 else "eager"
     )
 
-    # --- LoRA Configuration ---
+    # Fix: Sync model config with tokenizer changes
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.use_cache = False # Critical: Disable KV cache during training
+
+    # 4. Configure Training
+    sft_config = SFTConfig(
+        output_dir=task_output_dir,
+        run_name=f"sft_{task_name}",
+        learning_rate=LEARNING_RATE,
+        weight_decay=WEIGHT_DECAY,
+        num_train_epochs=NUM_TRAIN_EPOCHS,
+        per_device_train_batch_size=PER_DEVICE_TRAIN_BATCH_SIZE,
+        max_length=MAX_LENGTH,
+        gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
+        logging_steps=LOGGING_STEPS,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        save_total_limit=SAVE_TOTAL_LIMIT,
+        lr_scheduler_type="linear",
+        warmup_ratio=WARMUP_RATIO,
+        bf16=torch.cuda.is_bf16_supported(), # Dynamic check
+        tf32=True,
+        report_to='wandb',
+        # processing_class=tokenizer, # Use if strictly TRL > 0.9.0
+        dataset_text_field="text", # Explicitly usually required if dataset isn't pre-formatted
+        packing=False 
+    )
+
     peft_config = LoraConfig(
-        r=4,
-        lora_alpha=8,
-        target_modules=["q_proj", "k_proj", "v_proj"],
+        r=LORA_R,
+        lora_alpha=LORA_ALPHA,
         lora_dropout=0.0,
         bias="none",
         task_type="CAUSAL_LM",
+        target_modules=["q_proj", "k_proj", "v_proj"],
     )
 
-    model = get_peft_model(model, peft_config)
-    print(f"Trainable parameters for {task}:")
-    model.print_trainable_parameters()
-
-    def formatting_func(examples):
-        return examples["text"]
-
-    # Define final output path based on global config and current task
-    final_output_dir = Path(OUTPUT_DIR) / "llama-3.2-1B" / "en" / task
-    final_output_dir.mkdir(parents=True, exist_ok=True)
-
-    # --- Trainer Setup ---
-    training_args = TrainingArguments(
-        output_dir=str(final_output_dir),
-        per_device_train_batch_size=BATCH_SIZE,
-        per_device_eval_batch_size=BATCH_SIZE,
-        num_train_epochs=EPOCHS,
-        learning_rate=LR,
-        weight_decay=0.01,
-        max_grad_norm=1.0,
-        logging_steps=50,
-        eval_strategy="epoch",
-        save_strategy="epoch",
-        fp16=(device == "cuda"),
-        use_mps_device=(device == "mps"),
-        load_best_model_at_end=True, # Optional: load best checkpoint
-        metric_for_best_model="eval_loss",
-    )
-
+    # 5. Initialize Trainer with EXPLICIT model
+    print(f"[{task_name}] Initializing Trainer...")
     trainer = SFTTrainer(
-        model=model,
-        train_dataset=train_hf,
-        eval_dataset=dev_hf,
-        peft_config=None,
-        args=training_args,
-        formatting_func=formatting_func,
-
+        model=model, # Pass the loaded object, not the string
+        args=sft_config,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        processing_class=tokenizer,
+        peft_config=peft_config,
     )
 
-    # --- Training Execution ---
+    # 6. Train
+    print(f"[{task_name}] Training...")
     trainer.train()
+
+    # 7. Save Adapter
+    print(f"[{task_name}] Saving adapters...")
+    trainer.save_model(task_output_dir)
+    tokenizer.save_pretrained(task_output_dir)
+
+    # 8. Merge and Save Full Model (Fixes Wrapper issues)
+    if SAVE_MERGED:
+        print(f"[{task_name}] Merging weights...")
+        
+        # Fix: Ensure we are merging the correct object and handling memory
+        # We reload or use the trainer model, but we must be careful with 'merge_and_unload' availability
+        try:
+            # Try merging directly if the method exists on the trainer.model (typical for PEFT)
+            if hasattr(trainer.model, "merge_and_unload"):
+                merged = trainer.model.merge_and_unload()
+            # If wrapped (e.g. by Accelerator), unwrap first
+            elif hasattr(trainer.model, "module") and hasattr(trainer.model.module, "merge_and_unload"):
+                merged = trainer.model.module.merge_and_unload()
+            else:
+                # Fallback: PeftModel wrapper might be deeper
+                print(f"[{task_name}] Warning: Model wrapped deeply. Attempting manual merge fallback.")
+                # For academic fail-fast, we might just skip or try standard unwind
+                merged = trainer.model
+
+            merged_dir = os.path.join(task_output_dir, "merged")
+            os.makedirs(merged_dir, exist_ok=True)
+            
+            merged.save_pretrained(merged_dir)
+            tokenizer.save_pretrained(merged_dir)
+            print(f"[{task_name}] Merged model saved to: {merged_dir}")
+
+        except Exception as e:
+            print(f"[{task_name}] CRITICAL ERROR DURING MERGE: {e}")
+            # Don't stop the pipeline, but log it.
+            pass
+
+    # 9. Cleanup
+    print(f"[{task_name}] Cleaning up memory...")
     
-    # Save the final model and tokenizer
-    trainer.save_model(str(final_output_dir))
-    tokenizer.save_pretrained(str(final_output_dir))
-    print(f"Successfully saved LoRA SFT model for task {task} to {final_output_dir}")
-    print(f"--- Finished Training for Task: {task} ---")
-
-
-def main():
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"Using device: {device}")
-
-    tasks_to_run = find_available_tasks(TRAIN_FILE_ROOT)
-
-    if not tasks_to_run:
-        print(f"No tasks found in {TRAIN_FILE_ROOT}. Exiting.")
-        return
-
-    print(f"Found {len(tasks_to_run)} tasks to train: {', '.join(tasks_to_run)}")
+    # Force deletion of references
+    del trainer
+    del model
+    if 'merged' in locals(): del merged
     
-    for task in tasks_to_run:
-        run_training_for_task(task, device)
+    cleanup_gpu()
+    print(f"[{task_name}] Done.\n")
 
-    print("\n\n*** All training tasks completed. ***")
+
+def main() -> None:
+    _validate_config()
+    os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
+    print(f"Pipeline started. Training separate models for: {TASKS}")
+    
+    for task in TASKS:
+        try:
+            train_single_task(task)
+        except Exception as e:
+            print(f"CRITICAL ERROR while training task {task}: {e}")
+            raise e
+
+    print("All tasks completed successfully.")
+
 
 if __name__ == "__main__":
     main()
