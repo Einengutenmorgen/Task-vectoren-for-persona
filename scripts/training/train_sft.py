@@ -24,10 +24,10 @@ from src.training.sft_dataset import SFTDatasetConfig, load_sft_train_eval_datas
 # =========================
 
 MODEL_NAME_OR_PATH: str = "META-LLAMA/LLAMA-3.2-1B" 
-DATA_ROOT: str = str(PROJECT_ROOT / 'data/processed/en/tasks') 
-BASE_OUTPUT_DIR: str = str(PROJECT_ROOT / 'data/processed/en/results/sft') # Fixed: Use absolute path
+DATA_ROOT: str = str(PROJECT_ROOT / 'data/sft_taskvectors') 
+BASE_OUTPUT_DIR: str = str(PROJECT_ROOT / 'results/sft_tv') # Fixed: Use absolute path
 
-TASKS = ("AB", "BC", "CA")
+TASKS = ("AB", "BC", "CB")
 
 NUM_TRAIN_EPOCHS: float = 5.0
 PER_DEVICE_TRAIN_BATCH_SIZE: int = 8
@@ -59,6 +59,56 @@ def _validate_config() -> None:
     # Verify we are on the expected logical device (0) which maps to physical (3)
     print(f"Running on: {torch.cuda.get_device_name(0)}")
 
+def check_label_balance_hf(ds, label_key="correct_option", tolerance=0.10):
+    """
+    Checks whether label distribution in a HuggingFace Dataset is balanced enough.
+    
+    Args:
+        ds: HF Dataset
+        label_key: column containing labels
+        tolerance: allowed deviation from 50/50
+
+    Behavior:
+        - Logs distribution
+        - Allows training if deviation <= tolerance
+        - Raises RuntimeError to stop training otherwise
+    """
+
+    if label_key not in ds.column_names:
+        raise ValueError(f"Dataset has no column '{label_key}'")
+
+    # Extract column (fast, memory-efficient)
+    labels = ds[label_key]
+
+    from collections import Counter
+    counts = Counter(labels)
+    total = sum(counts.values())
+
+    print("\n=== Label Distribution Check ===")
+    print(f"Total items: {total}")
+    for lbl, cnt in counts.items():
+        print(f"  {lbl}: {cnt}  ({cnt/total:.2%})")
+
+    # Only apply balance check for a binary dataset (A/B)
+    if len(counts) == 2:
+        # Convert dict values to sorted order for consistency
+        labels_list = sorted(list(counts.keys()))
+        p = counts[labels_list[0]] / total
+        deviation = abs(p - 0.5)
+
+        print(f"Deviation from perfect balance: {deviation:.3f} (tolerance={tolerance:.3f})")
+
+        if deviation > tolerance:
+            raise RuntimeError(
+                f"[FATAL] Label imbalance too high! "
+                f"Deviation={deviation:.3f} exceeds tolerance={tolerance:.3f}"
+            )
+        else:
+            print("[OK] Label balance within tolerance.\n")
+
+    else:
+        print("[INFO] Non-binary labels; balance check skipped.\n")
+
 
 def cleanup_gpu():
     """Cleans up GPU memory."""
@@ -80,6 +130,7 @@ def train_single_task(task_name: str) -> None:
     print(f"[{task_name}] Loading datasets...")
     train_dataset, eval_dataset = load_sft_train_eval_datasets(dataset_cfg)
     print(f"[{task_name}] Train size: {len(train_dataset)} | Eval size: {len(eval_dataset)}")
+    check_label_balance_hf(train_dataset)
 
     # 2. Load Tokenizer
     print(f"[{task_name}] Loading tokenizer...")

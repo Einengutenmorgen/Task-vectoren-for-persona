@@ -10,3 +10,8 @@ data/processed/en/test/
 data/raw/
 data/results/
 models
+flipped_model_BA/
+*.jsonl
+.models/
+*.json
+results/

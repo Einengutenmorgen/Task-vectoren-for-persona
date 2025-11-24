@@ -42,7 +42,7 @@ def _load_raw_split(cfg: SFTDatasetConfig, split_name: str) -> Dataset:
     for task in cfg.tasks:
         file_path = root / task / f"{split_name}.jsonl"
         
-        ds = load_dataset("json", data_files=file_path, split="train")
+        ds = load_dataset("json", data_files=str(file_path), split="train")
 
         # Add task identifier if missing
         if "task" not in ds.column_names:
