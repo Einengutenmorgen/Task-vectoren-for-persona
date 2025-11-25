@@ -275,8 +275,8 @@ def evaluate_model(model, tokenizer, dev_samples, device, debug_print=False):
 
 
 def grid_search(eval_model, tokenizer, theta_0, delta_instr, delta_pref, device, dev_samples):
-    g1_range = [i * 0.3 for i in range(0, 3)]  # 0.0 ... 3.0
-    g2_range = [i * 0.3 for i in range(0, 2)]   # 0.0 ... 2.1
+    g1_range = [i * 0.3 for i in range(0, 11)]  # 0.0 ... 3.0
+    g2_range = [i * 0.3 for i in range(0, 8)]   # 0.0 ... 2.1
 
     best_acc = -1.0
     best_gammas = (0.0, 0.0)
@@ -407,6 +407,6 @@ if __name__ == "__main__":
     print(f"\nSaving best flipped model (AB -> BA)...")
     final_state_dict = build_flipped_state_dict(theta_0, delta_instr, delta_pref, best_g1, best_g2)
     eval_model.load_state_dict(final_state_dict)
-    eval_model.save_pretrained(".models/flipped_model_ba_3")
-    tokenizer.save_pretrained(".models/flipped_model_ba_3")
+    eval_model.save_pretrained(".models/flipped_model_ba_4")
+    tokenizer.save_pretrained(".models/flipped_model_ba_4")
     print("Done.")
