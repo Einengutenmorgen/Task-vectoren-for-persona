@@ -25,7 +25,7 @@ from src.training.sft_dataset import SFTDatasetConfig, load_sft_train_eval_datas
 
 MODEL_NAME_OR_PATH: str = "META-LLAMA/LLAMA-3.2-1B" 
 DATA_ROOT: str = str(PROJECT_ROOT / 'data/sft_taskvectors') 
-BASE_OUTPUT_DIR: str = str(PROJECT_ROOT / 'results/sft_tv') # Fixed: Use absolute path
+BASE_OUTPUT_DIR: str = str(PROJECT_ROOT / 'models/sft_seed') 
 
 TASKS = ("AB", "BC", "CB")
 
@@ -43,6 +43,16 @@ SAVE_MERGED: bool = True
 LOGGING_STEPS: int = 100
 SAVE_TOTAL_LIMIT: int = 2
 WARMUP_RATIO: float = 0.03
+
+GLOBAL_SEED = 42
+
+def set_global_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    set_seed(seed)
 
 
 def _validate_config() -> None:
@@ -173,8 +183,6 @@ def train_single_task(task_name: str) -> None:
         bf16=torch.cuda.is_bf16_supported(), # Dynamic check
         tf32=True,
         report_to='wandb',
-        # processing_class=tokenizer, # Use if strictly TRL > 0.9.0
-        dataset_text_field="text", # Explicitly usually required if dataset isn't pre-formatted
         packing=False 
     )
 
@@ -251,6 +259,7 @@ def train_single_task(task_name: str) -> None:
 
 
 def main() -> None:
+    set_global_seed(seed=GLOBAL_SEED)
     _validate_config()
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
     print(f"Pipeline started. Training separate models for: {TASKS}")

@@ -15,3 +15,5 @@ flipped_model_BA/
 .models/
 *.json
 results/
+*.ipynb
+big5_chat_data/
